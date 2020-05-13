@@ -18,9 +18,12 @@ def ml_loop(side: str):
     person=False
     Pdirect=0
     set_init_direct=0
-    savepath= path.dirname(__file__)+"\\save\\"
-    log = pickle.load((open(savepath+"seg_data.pickle", 'rb')))
-    blocker = pickle.load((open(savepath+"block_go2.pickle", 'rb')))
+    filelog=path.join(path.dirname(__file__),'save','seg_data.pickle')
+    with open (filelog,'rb')as file:
+        log=pickle.load(file)
+    filelog=path.join(path.dirname(__file__),'save','block_go2.pickle')
+    with open (filelog,'rb')as file:
+        blocker=pickle.load(file)
     # file_p1 = path.join(path.dirname(__file__)+"\\save\\"+"Model_1.pickle")
     model=Ball_place_model(blocker,log)
     def move_to(player, pred) : #move platform to predicted position to catch ball 
