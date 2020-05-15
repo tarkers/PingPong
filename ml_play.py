@@ -14,138 +14,120 @@ def ml_loop(side: str):
     # 1. Put the initialization code here
     ball_served = False
     check_direction=False
-    p2 =False
-    person=False
-    Pdirect=0
-    set_init_direct=0
-    filelog=path.join(path.dirname(__file__),'save','seg_data.pickle')
+    set_init_direct=0       #Blocker 往右 0 往左1
+    '''
+    PICKLE:  new_seg data  
+           ex:  seg[0]=[7,48,23,3] 
+                seg[0][0]=Ball_y_Speed 7
+                seg[0][1]=Distance(P2-P1)==335 / ball_y_Speed =>算大概幾個frame球會從P2到P1  (無條件進位成整數)
+                seg[0][2]=Ball_half_Distance==240 / ball_x_Speed =>算大概以個frame會經過中間的blocker (無條件進位成整數)
+                seg[0][3]=Blocker_Height=(260-235)/ball_y_speed =>可能會碰到blocker的frame (無條件進位成整數) # 後來沒有用到
+    PICKLE:  block_go2
+            用frame存位置
+            ex: frame[0]=>存frame
+                frame[0]=>存blocker位置
+                frame[0]=>存當時blocker方向        
+    '''
+    filelog=path.join(path.dirname(__file__),'save','new_seg_data.pickle')
     with open (filelog,'rb')as file:
         log=pickle.load(file)
     filelog=path.join(path.dirname(__file__),'save','block_go2.pickle')
     with open (filelog,'rb')as file:
         blocker=pickle.load(file)
-    # file_p1 = path.join(path.dirname(__file__)+"\\save\\"+"Model_1.pickle")
-    model=Ball_place_model(blocker,log)
+    model=Ball_place_model(blocker,log) #將兩個data讀入
+
+
     def move_to(player, pred) : #move platform to predicted position to catch ball 
         if player == '1P':  
-            if scene_info["platform_1P"][0]==5 and pred>5 and pred<30 and scene_info["ball_speed"][1]>0:
-                return  0      
-            elif  scene_info["platform_1P"][0]==155 and pred<195 and pred>160 and scene_info["ball_speed"][1]>0:
-                return 0
-            if scene_info["platform_1P"][0]+20 > pred :  return 2 # goes left
+            if scene_info["platform_1P"][0]==5 and pred>5 and pred<30 and scene_info["ball_speed"][1]>0: return  0      #為切球做準備=>因為碰到邊界沒辦法加速               
+            elif  scene_info["platform_1P"][0]==155 and pred<195 and pred>160 and scene_info["ball_speed"][1]>0:  return 0  #為切球做準備=>因為碰到邊界沒辦法加速
+               
+            elif scene_info["platform_1P"][0]+20 > pred :  return 2 # goes left
             elif scene_info["platform_1P"][0]+20 <pred :  return 1 # goes right
             else :  return 0 # NONE
-        else :
+         #-------------------------2P test
+        else :                                                                          
             if scene_info["platform_2P"][0]+75  > pred : return 2 # goes left
             elif scene_info["platform_2P"][0]+75 <pred : return 1 # goes right
             else : return 0 # NONE
+    
+    #------------------------------2Ptest
     def cut_the_ball():
         tmp=rd.randint(0,2)
-        # if scene_info["ball_speed"][0]<0 : return 2 # goes left
-        # elif scene_info["ball_speed"][0]>0: return 1 # goes right
-        # else : return 1 # NONE
+       
         if tmp==2: return 2 # goes left
         elif tmp==1: return 1 # goes right
         else : return 1 # NONE
 
 
     def ml_loop_for_1P(): 
-        # model.Change_frame(scene_info["ball"])   #check now y frame
         if scene_info["ball_speed"][1]>0: 
             model.checkup=False
-            if scene_info["ball"][1]+scene_info["ball_speed"][1]>=415 :
-                if scene_info["ball"][0] ==0 or scene_info["ball"][1]==195:
-                    #print("leave")
-                    return 0
-                ball_hit_place=[scene_info["ball"][0]+scene_info["ball_speed"][0],-415]
-                # if ball_hit_place[0]>195:   ball_hit_place[0]=195
-                # elif ball_hit_place[0]<0:   ball_hit_place[0]=0
-                if ball_hit_place[0]>=195 or ball_hit_place[0]<=0:
-                    return 0
-                model.pre_point=ball_hit_place[0]
-                yy=scene_info["ball_speed"][1]   #go up
-                speed_up=True
-                reverse=True
+            #切球機制
+            if scene_info["ball"][1]+scene_info["ball_speed"][1]>=415 : #落點前一個frame
+                ball_hit_place=[scene_info["ball"][0]+scene_info["ball_speed"][0],-415] #算球的落點位置
+
+                if scene_info["ball"][0] ==0 or scene_info["ball"][1]==195: return 0  #球在撞到platform或前一個的位置若在邊界就不動(避免死掉的機制)               
+                elif ball_hit_place[0]>=195 or ball_hit_place[0]<=0:  return 0
+                   
+                model.pre_point=ball_hit_place[0]  # 球的落點X
+                yy=scene_info["ball_speed"][1]   #正的
+                speed_up=True                #初始加速
+                reverse=True                 #初始反打
                 if scene_info["ball_speed"][0]>0 :                
                     speed_up= model.UP_Move_check(scene_info["frame"],[yy+3,yy],ball_hit_place)
-                    if not speed_up and scene_info["platform_1P"][0]<160:
-                        # #print("speed up speed >0")
-                        model.temp=True
+                    if not speed_up: 
                         return 1
-                    elif ball_hit_place[0]<190:
+                    elif ball_hit_place[0]<190: #避免reverse球無法落到板子
                         reverse=model.UP_Move_check(scene_info["frame"],[-yy,yy],ball_hit_place) 
                         if not reverse:
-                            # #print("reverse speed>0")
-                            model.temp=True
                             return 2                      
-                        # #print("none false")
-                        model.temp=False
                         return 0  
-                    model.temp=False
-                    # #print("none no re")   
                     return 0         
                 else:       
                     speed_up=model.UP_Move_check(scene_info["frame"],[-(yy+3),yy],ball_hit_place)
-                    if not speed_up and scene_info["platform_1P"][0]>0:
-                        # #print("speed up speed <0")
-                        model.temp=True
+                    if not speed_up:
                         return 2
-                    elif ball_hit_place[0]>5:
+                    elif ball_hit_place[0]>5:   #避免reverse球無法落到板子
                         reverse=model.UP_Move_check(scene_info["frame"],[yy,yy],ball_hit_place)
                         if not reverse:
-                            model.temp=True
-                            # #print("reverse speed<0")
                             return 1
-                        model.temp=False
-                        # #print("none false")
                         return 0
-                    model.temp=False
-                    # #print("none no re")
-                    return 0             
-            elif model.now_speed==True or (scene_info["frame"]-150)%200==0:    #the ball goes down  
+                    return 0        
+            #計算板子該移動到的位置     
+            elif model.now_speed==True or (scene_info["frame"]-150)%200==0:  #加速或P2反彈時
                 #slice system          
                 model.checkdown+=1                           
                 model.now_speed=False
                 model.pre_point=model.Down_Move_check(scene_info["frame"],list(scene_info["ball_speed"]),[scene_info["ball"][0],-scene_info["ball"][1]])            
-                # #print(model.pre_point)
-                    
+            #做第二次驗證---懶得把第一次計算很清楚      
             elif scene_info["ball"][1]>260 and model.checkdown!=0:
-                ww=model.Down_Move_check(scene_info["frame"],list(scene_info["ball_speed"]),[scene_info["ball"][0],-scene_info["ball"][1]]) 
+                twice_check=model.Down_Move_check(scene_info["frame"],list(scene_info["ball_speed"]),[scene_info["ball"][0],-scene_info["ball"][1]]) 
                 model.checkdown=0
-                if model.pre_point!=ww:
-                    #print(model.pre_point,ww,"Down Check twice!!!!!!!!!")
-                    model.pre_point=ww
-            return move_to(player='1P',pred=model.pre_point)                               
+                if model.pre_point!=twice_check:
+                    model.pre_point=twice_check
+            return move_to(player='1P',pred=model.pre_point) 
+        #ball goes up                              
         else:
             model.now_speed=True
+            #確認球到P2的位置=>通常P2偏哪邊 落到P1的點就偏哪邊(但還是有例外)=>下面只是簡單亂寫...其實在24前設回到中間100都可以過
+            #下面uppoint可以改成_plateform_P2的位置
+            #這部分有改好可以跑到30幾....但機率超小，我做到崩潰就沒做了XD
             if model.checkup==False and scene_info["ball"][1]<240:
-                #print(scene_info["frame"],scene_info["ball"],"seeeeeeee")
                 test,model.slope=model.Check_Waiting_Place(list(scene_info["ball_speed"]),list(scene_info["ball"]))
-                #print(model.pre_point,test,scene_info["ball_speed"],scene_info["platform_1P"],"=======================")              
-                # if test>160-abs(scene_info["ball_speed"][0]):
-                #     model.uppoint=150
-                # elif test<40+abs(scene_info["ball_speed"][0]):
-                #     model.uppoint=50
-                # else:
-                #     if model.slop<0:
-                #         model.uppoint=80
-                #     else:
-                #         model.uppoint=120
                 if scene_info["ball_speed"][1]>=-24:
                     model.uppoint =(test*2+100)//3 
                 else:
                     model.uppoint=test         
                 model.checkup=True 
             elif scene_info["ball"][1]>=150 :
-                return move_to(player='1P',pred=100)
-                
-           
+                return move_to(player='1P',pred=100)        
             else:
                 return move_to(player='1P',pred=model.uppoint)  
                 
                 
                 
-
+    #--------------------------2Ptest
     def ml_loop_for_2P():  # as same as 1P
         if scene_info["ball_speed"][1] < 0 : 
             abs_speedX=abs(scene_info["ball_speed"][0])  #將speed設為正
@@ -164,11 +146,9 @@ def ml_loop(side: str):
             pred =abs(195*bound-last_reg*abs_speedX)
             if yseg<xseg:
                 pred=scene_info["ball"][0]+yseg*scene_info["ball_speed"][0]
-            # #print(pred,now_direct,yseg,xseg,last_reg,x_range_seg,bound,scene_info["ball"])    
             if scene_info["ball"][1]+scene_info["ball_speed"][1]<=80: return cut_the_ball()          
             else: return move_to(player = '2P',pred = pred)
-        else : 
-            
+        else :         
             return move_to(player = '2P',pred = 100)
                 
             
@@ -176,27 +156,19 @@ def ml_loop(side: str):
 
     # 2. Inform the game process that ml process is ready
     comm.ml_ready()
-    tmp=0
     # 3. Start an endless loop
     while True:
-        # 3.1. Receive the scene information sent from the game process
         scene_info = comm.recv_from_game()
 
-        # 3.2. If either of two sides wins the game, do the updating or
-        #      resetting stuff and inform the game process when the ml process
-        #      is ready.
         if scene_info["status"] != "GAME_ALIVE":
             # Do some updating or resetting stuff
             ball_served = False
-            start_frame=rd.randint(0,20)
-            Pdirect=0
-            person=True
             # 3.2.1 Inform the game process that
             #       the ml process is ready for the next round
             comm.ml_ready()
             continue
 
-        # 3.3 Put the code here to handle the scene information
+        #check Blocker place
         if scene_info["frame"]<=3:
             if scene_info["blocker"][0]>85:
                 model.init_block_direction=0
@@ -205,39 +177,22 @@ def ml_loop(side: str):
             
             
         # 3.4 Send the instruction for this frame to the game process
-        if not ball_served and scene_info["frame"]>=150:
+        if not ball_served and scene_info["frame"]>=150:  #球往左發
             comm.send_to_game({"frame": scene_info["frame"], "command": "SERVE_TO_LEFT"})
-
             ball_served = True
             continue
         elif scene_info["frame"]<150:
-            person=True
-            if scene_info["ball"][1]>150:
-                preson=True
-            else:
-                preson=False
-            if person==True and side=="1P" or person==False and side=="2P":          
-                if Pdirect==0:
-                    comm.send_to_game({"frame": scene_info["frame"], "command": "MOVE_LEFT"})
-                else:
-                    comm.send_to_game({"frame": scene_info["frame"], "command": "MOVE_RIGHT"})
+            if side=="1P":          
+                comm.send_to_game({"frame": scene_info["frame"], "command": "MOVE_LEFT"})   #也可以往右
+
         else:
             if side == "1P":
-                command = ml_loop_for_1P()  
-                # if scene_info["ball"][1]>=415 or scene_info["ball"][1]==80:
-                #     # temp=scene_info["ball_speed"][1]
-                #     #print(command,scene_info["frame"],scene_info["ball"],scene_info["ball_speed"],scene_info["platform_1P"])                                                          
-                # # if scene_info["ball"][1]==260 and scene_info["ball_speed"][1]>0:
-                # #     #print(model.temp,scene_info["frame"],scene_info["ball"],scene_info["ball_speed"],"UP Check twice!!!!!!!!!!!")                                                          
+                command = ml_loop_for_1P()                                                          
                 if command == 0:             
                     comm.send_to_game({"frame": scene_info["frame"], "command": "NONE"})
-                elif command == 1:
-                    # if scene_info["ball"][1]==415:
-                    #     #print("right")         
+                elif command == 1:     
                     comm.send_to_game({"frame": scene_info["frame"], "command": "MOVE_RIGHT"})
-                else :
-                    # if scene_info["ball"][1]==415:
-                    #     #print("left")     
+                else :   
                     comm.send_to_game({"frame": scene_info["frame"], "command": "MOVE_LEFT"})
             else:
                 command = ml_loop_for_2P()
@@ -249,7 +204,9 @@ def ml_loop(side: str):
                     comm.send_to_game({"frame": scene_info["frame"], "command": "MOVE_LEFT"})
             
 
-
+'''
+下面實作的座標圖 y會和遊戲相反:GAME: Y>0 往下 ，CLASS: Y>0 往上  所以P2_Y=-80, P1_Y=-420
+'''
 class Ball_place_model():
     #left init_dir=1 ,right init_dir=0   
     def __init__(self,data,seg_data): 
@@ -262,9 +219,8 @@ class Ball_place_model():
         self.checkup=False
         self.uppoint=100
         self.slop=-1
-        self.temp=False
     #check_block_place
-    def Block_Predict(self,frame)->int:    
+    def Block_Predict(self,frame)->int:     #blocker 在114frame後會repeat  
         if frame<300:
             if self.init_block_direction==0:
                 return -(self.data[frame,1]-85)+85,-self.data[frame,2]
@@ -276,20 +232,18 @@ class Ball_place_model():
             else:
                 return self.data[frame%114+114,1],self.data[frame%114+114,2]
  
-    #x=(y-y0)/m+x0     
+    #x=(y-y0)/m+x0 確認碰到水平線的位置     
     def Check_Horizontal(self,start_point,block_line,m):
             x=(block_line[0][1]-start_point[1])/m +start_point[0]  
-            # #print(x,block_line[0][1],"check_horizontal_line")
             if x>195 and x<200:
                 x=195
             if x+5-block_line[0][0]>=0 and block_line[1][0]-x>=0:   
                 x=(block_line[2]-start_point[1])/m +start_point[0]                 
                 return [x,block_line[0][1]]        
             else:
-                # #print(x,block_line[0][1],m,"not_hit_check_horizontal_line")
                 return False
    
-
+    #check wall 確認邊界位置
     def Check_wall(self,start_point,m,ball_speed,limit):
         y=m*(limit-start_point[0])+start_point[1] 
         if (y-start_point[1])%ball_speed[1]!=0:           
@@ -300,20 +254,21 @@ class Ball_place_model():
 
     def Check_Vertical(self,start_point,block_line,m,ball_speed,direction=0,seg_range=0):
         y=m*(block_line[0][0]-start_point[0])+start_point[1]
-        if y-3>-235:
+        if y-3>-235:    # line 沒有在blocker範圍
             return False
-        if y-3+235<=0 and y+260>=0 and block_line[2]<=y:
-            # if block_line[2]==y:
-            #     return [block_line[0][0],block_line[2]+ball_speed[1]]
+        if y-3+235<=0 and y+260>=0 and block_line[2]<=y: #確認交點
             return [block_line[0][0],block_line[2]]
         bug=0
-        while block_line[2]>-260:
-            if bug>4:
-                #print("verticalbug")
+        while block_line[2]>-260:   #超過這個之前都可能撞到
+            if bug>4:               #避免無線迴圈 debug用
+                print("verticalbug")
                 break
             else:
                 bug+=1
+
             block_line[0][0]=block_line[0][0]+3*direction
+
+            #確認block_line有沒有超出blocker的位置
             if m<0:           #left line
                 if block_line[0][0]<=-5:
                     block_line[0][0]=-5
@@ -329,27 +284,23 @@ class Ball_place_model():
                     block_line[0][0]=200
                     direction=-direction
             y=m*(block_line[0][0]-start_point[0])+start_point[1]
-            if y+235<=0 and y+260>=0 and block_line[2]+ball_speed[1]<=y: #block_line[2]-5+ball_speed[1]*(i-1)>=y:  
-                # if y==block_line[2]:
-                #     #print("test",y)
-                #     return False 
-                    
-                # else:
+            if y+235<=0 and y+260>=0 and block_line[2]+ball_speed[1]<=y: 
                 return [block_line[0][0],block_line[2]+ball_speed[1]]                    
             block_line[2]+=ball_speed[1]
         return False
             
     #if will touch  the block , hit to the opposite side
     def UP_Move_check(self,frame,ball_speed,ball_place):             
-            seg_frame=self.seg_data[self.seg_data[:,0]==abs(ball_speed[0])+abs(ball_speed[1])][0]       #find the seg data     
+            seg_frame=self.seg_data[self.seg_data[:,0]==abs(ball_speed[1])][0]       #find the seg data     
             m=ball_speed[1]/ball_speed[0]       #斜率
             if ball_place[0]==0:    m=abs(m)
             elif ball_place[0]==195:    m=-abs(m)
-            hor_y=-415+seg_frame[2]*ball_speed[1]       #downer line y_place
+            hor_y=-415+seg_frame[2]*ball_speed[1]       # blocker downer line_y
             placex,block_direction=self.Block_Predict(frame+1+seg_frame[2])     #frame:last frame before hit plateform 
-            downer_line=[[placex-5,-260],[placex+30,-260],hor_y]      #y=260  
-            # #print(placex,self.init_block_direction,"---up_check-----------")   
-            bug=0                             
+            #blocker
+            downer_line=[[placex-5,-260],[placex+30,-260],hor_y]      #y=-260  
+            bug=0      
+            #計算往上打是否會撞到blocker                       
             while ball_place[1]<hor_y:          
                 Hit= self.Check_Horizontal(ball_place,downer_line,m)
                 if Hit==False:
@@ -360,103 +311,87 @@ class Ball_place_model():
                     m=-m                    
                 else:   return True
                 
-                if bug>5:
-                    #print("upbug")
+                if bug>5:   #避免無線迴圈 debug用
+                    print("upbug")
                     break
                 else:
                     bug+=1
             return False
     
     def Down_Move_check(self,frame,ball_speed,ball_place):   
-        seg_frame=self.seg_data[self.seg_data[:,0]==abs(ball_speed[0])+abs(ball_speed[1])][0]  #find the seg data     
-        ball_speed[1]=-ball_speed[1]     
+        seg_frame=self.seg_data[self.seg_data[:,0]==abs(ball_speed[1])][0]  #find the seg data     
+        ball_speed[1]=-ball_speed[1]    #座標相反 
         m=ball_speed[1]/ball_speed[0]    
         if ball_place[0]==0:    m=abs(m)
         elif ball_place[0]==195:    m=-abs(m)
-        if ball_place[1]!=-80:   
+        if ball_place[1]!=-80:       #P2反彈
             last=math.ceil((-235-ball_place[1])/ball_speed[1])
             platseg=math.ceil((-415-ball_place[1])/ball_speed[1])
             hor_y=ball_place[1]+last*ball_speed[1]
             platform_y=ball_place[1]+platseg*ball_speed[1]
-        else:
+        else:                       #加速 & 二次確認
             hor_y=-80+seg_frame[2]*ball_speed[1]
             last=seg_frame[2] 
             platform_y=-80+seg_frame[1]*ball_speed[1]
         
-        placex,block_direction=self.Block_Predict(frame+last)  #------------------------yseg
-        
-        left_line=[[placex-5,-235],[placex-5,-260],hor_y]         #x=placex-5
-        right_line=[[placex+30,-235],[placex+30,-260],hor_y]      #x=placx+30       
+        placex,block_direction=self.Block_Predict(frame+last)  #yseg
+        #blocker
+        left_line=[[placex-5,-235],[placex-5,-260],hor_y]         #x=placex-5  bacause ball size=5
+        right_line=[[placex+30,-235],[placex+30,-260],hor_y]      #x=placx+30  
+        #platform     
         platform_line=[[-40,platform_y],[235,platform_y],-415]
         upper_line=[[placex,hor_y],[placex+30,hor_y],-240]
-        # if ball_place[1]==-80:  
-        #     #print(frame+last,frame,ball_speed,ball_place,placex,self.init_block_direction,"down check frame")
+
         vertical_check=False
         Hit=False
         bug=0
         while ball_place[1]>platform_y:         
             if bug>6:
-                #print("downbug")
+                print("downbug")
                 break
             else:
                 bug+=1
+
             if ball_place[1]>-260 and vertical_check==False:               
-                if m<0:                                             #right
-                    Hit=self.Check_Vertical(ball_place,left_line,m,ball_speed,block_direction,seg_frame[3])
-                else:
-                    Hit=self.Check_Vertical(ball_place,right_line,m,ball_speed,block_direction,seg_frame[3])
-                # if Hit==False and ball_place[1]>hor_y:  #check upper
-                #     Hit=self.Check_Horizontal(ball_place,upper_line,m)
-                #     if Hit!= False:
-                #         #print(Hit[0] ,"hit the upper")
-                #         return -Hit[0] 
-            else:
-                Hit=False
+                if m<0: it=self.Check_Vertical(ball_place,left_line,m,ball_speed,block_direction,seg_frame[3]) #right
+                else:  Hit=self.Check_Vertical(ball_place,right_line,m,ball_speed,block_direction,seg_frame[3])    #left
+            else:    Hit=False
+
             if Hit==False:
-                if m<0:
-                    Hit=self.Check_wall(ball_place,m,ball_speed,195)
-                    # #print(Hit,"wall195")
-                else:
-                    Hit=self.Check_wall(ball_place,m,ball_speed,0)
-                    # #print(Hit,"wall0")
-                if Hit[1]>platform_y:
+                if m<0: Hit=self.Check_wall(ball_place,m,ball_speed,195)                  
+                else:   Hit=self.Check_wall(ball_place,m,ball_speed,0)
+                   
+                if Hit[1]>platform_y:   #下一條線就會撞到platform
                     ball_place=Hit
-                else:
-                    # ball_place= self.Check_Horizontal(ball_place,platform_line,m)    
+                else:  
                     ball_place[0]=ball_place[0]+(-415-ball_place[1])/m
-                    if ball_place[0]>195:
-                       ball_place[0]=195
-                    elif ball_place[0]<0:
-                        ball_place[0]=0 
-                    # #print(ball_place[0],"ball_place")                                   
+                    #確認是否有超出邊界
+                    if ball_place[0]>195:   ball_place[0]=195
+                    elif ball_place[0]<0:    ball_place[0]=0                                
                     return ball_place[0]
-            else:    
+            else:   #have hit thr blocker   
                 ball_place=Hit
                 vertical_check=True
-                if ball_place[0]<0:
-                    ball_place[0]=0
-                    continue
-                elif ball_place[0]>195:
-                    ball_place[0]=195
-                    continue
-                # #print(ball_place,m,"---verticla_done")
-            m=-m  
+                if ball_place[0]<0: ball_place[0]=0
+                elif ball_place[0]>195: ball_place[0]=195
+                continue
+            m=-m  #hit m reverse
 
+    #check hit P2 place=>可以不實作
     def Check_Waiting_Place(self,ball_speed,ball_place):
-        seg_frame=self.seg_data[self.seg_data[:,0]==abs(ball_speed[0])+abs(ball_speed[1])][0]  #find the seg data          
+        seg_frame=self.seg_data[self.seg_data[:,0]==abs(ball_speed[1])][0]  #find the seg data          
         ball_speed[1]=-ball_speed[1]
-        ball_place[1]=-ball_place[1]
+        ball_place[1]=-ball_place[1]    
         m=ball_speed[1]/ball_speed[0]
-        if ball_place[1]==-415:
-            platform_y=-415+seg_frame[1]*ball_speed[1]
+        if ball_place[1]==-415: platform_y=-415+seg_frame[1]*ball_speed[1]
         else:
             plat_seg=math.ceil((-80-ball_place[1])/ball_speed[1])
             platform_y=ball_place[1]+plat_seg*ball_speed[1]
         tmp=0
         bug=0
         while ball_place[1]<-80:
-            if bug>5:
-                #print("checkbug")
+            if bug>5:    #避免無線迴圈 debug用
+                print("checkbug")
                 break
             else:
                 bug+=1
